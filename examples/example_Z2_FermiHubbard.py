@@ -21,8 +21,11 @@ from ed_lgt.operators import (
 )
 
 logger = logging.getLogger(__name__)
+
+# SYMMETRIES
+symmetries = True
 # N eigenvalues
-n_eigs = 2
+n_eigs = 1
 # LATTICE DIMENSIONS
 lvals = [3, 2]
 dim = len(lvals)
@@ -47,54 +50,85 @@ loc_dims = loc_dims.transpose().reshape(n_sites)
 lattice_labels = lattice_labels.transpose().reshape(n_sites)
 tot_dim = prod(loc_dims)
 logger.info(f"local dimensions: {loc_dims}")
-# GET operators for global symmetry sector
-op_list = [ops["N_tot"], ops["N_up"]]
-# op_diagonals = np.array([np.diag(op) for op in op_list], dtype=np.int64)
-op_diagonals = get_symmetry_sector_generators(
-    op_list, loc_dims, action="global", gauge_basis=M, lattice_labels=lattice_labels
-)
-op_sectors_list = np.array([n_sites, int(n_sites / 2)], dtype=np.int64)
-# ================================================================================
-# Acquire the twobody link symmetry operators
-pair_list = typed.List()
-for d in directions:
-    dir_list = []
-    for ii in range(prod(lvals)):
-        # Compute the corresponding coords
-        coords = zig_zag(lvals, ii)
-        # Check if it admits a twobody term according to the lattice geometry
-        _, sites_list = get_neighbor_sites(coords, lvals, d, has_obc)
-        if sites_list is not None:
-            dir_list.append(sites_list)
-    pair_list.append(np.array(dir_list, dtype=np.uint8))
+# %%
+if symmetries:
+    # GET operators for global symmetry sector
+    op_list = [ops["N_tot"], ops["N_up"]]
+    # op_diagonals = np.array([np.diag(op) for op in op_list], dtype=np.int64)
+    op_diagonals = get_symmetry_sector_generators(
+        op_list, loc_dims, action="global", gauge_basis=M, lattice_labels=lattice_labels
+    )
+    op_sectors_list = np.array([n_sites, int(n_sites / 2)], dtype=np.int64)
+    # ================================================================================
+    # Acquire the twobody link symmetry operators
+    pair_list = typed.List()
+    for d in directions:
+        dir_list = []
+        for ii in range(prod(lvals)):
+            # Compute the corresponding coords
+            coords = zig_zag(lvals, ii)
+            # Check if it admits a twobody term according to the lattice geometry
+            _, sites_list = get_neighbor_sites(coords, lvals, d, has_obc)
+            if sites_list is not None:
+                dir_list.append(sites_list)
+        pair_list.append(np.array(dir_list, dtype=np.uint8))
 
-link_ops = [
-    [ops["P_px"], ops["P_mx"]],
-    [ops["P_py"], ops["P_my"]],
-]
-
-
-link_ops = get_symmetry_sector_generators(
-    link_ops, loc_dims, action="link", gauge_basis=M, lattice_labels=lattice_labels
-)
-link_sectors = np.array([1, 1], dtype=np.int64)
-# ===========================================================
-# Compute the global symmetry sector
-sector_ind, sector_config = global_abelian_sector(
-    loc_dims, sym_op_diags=op_diagonals, sym_sectors=op_sectors_list, sym_type="U"
-)
-sector_ind, sector_configs = link_abelian_sector(
-    loc_dims,
-    sym_op_diags=link_ops,
-    sym_sectors=link_sectors,
-    pair_list=pair_list,
-    configs=sector_config,
-)
+    link_ops = [
+        [ops["P_px"], ops["P_mx"]],
+        [ops["P_py"], ops["P_my"]],
+    ]
+    link_ops = get_symmetry_sector_generators(
+        link_ops, loc_dims, action="link", gauge_basis=M, lattice_labels=lattice_labels
+    )
+    link_sectors = np.array([1, 1], dtype=np.int64)
+    # ===========================================================
+    # Compute the global symmetry sector
+    sector_ind, sector_config = global_abelian_sector(
+        loc_dims, sym_op_diags=op_diagonals, sym_sectors=op_sectors_list, sym_type="U"
+    )
+    sector_ind, sector_configs = link_abelian_sector(
+        loc_dims,
+        sym_op_diags=link_ops,
+        sym_sectors=link_sectors,
+        pair_list=pair_list,
+        configs=sector_config,
+    )
+else:
+    sector_ind = None
+    sector_configs = None
 # Hamiltonian Couplings
 coeffs = {"t": -1, "U": 0.1, "eta": 100}
 # CONSTRUCT THE HAMILTONIAN
 H = QMB_hamiltonian(0, lvals, loc_dims)
 h_terms = {}
+if not symmetries:
+    # ---------------------------------------------------------------------------
+    # LINK PENALTIES & Border penalties
+    for d in directions:
+        op_names_list = [f"n_p{d}", f"n_m{d}"]
+        op_list = [ops[op] for op in op_names_list]
+        # Define the Hamiltonian term
+        h_terms[f"W{d}"] = TwoBodyTerm(
+            axis=d,
+            op_list=op_list,
+            op_names_list=op_names_list,
+            lvals=lvals,
+            has_obc=has_obc,
+            gauge_basis=M,
+            sector_configs=sector_configs,
+        )
+        H.Ham += h_terms[f"W{d}"].get_Hamiltonian(strength=-2 * coeffs["eta"])
+    # SINGLE SITE OPERATORS needed for the LINK SYMMETRY/OBC PENALTIES
+    op_name = f"n_total"
+    h_terms[op_name] = LocalTerm(
+        ops[op_name],
+        op_name,
+        lvals=lvals,
+        has_obc=has_obc,
+        gauge_basis=M,
+        sector_configs=sector_configs,
+    )
+    H.Ham += h_terms[op_name].get_Hamiltonian(strength=coeffs["eta"])
 # -------------------------------------------------------------------------------
 # COULOMB POTENTIAL
 h_terms["U"] = LocalTerm(
@@ -136,7 +170,7 @@ res["energy"] = H.Nenergies
 # LOCAL OBSERVABLE LIST
 local_obs = [f"n_{s}{d}" for d in directions for s in "mp"]
 local_obs += [f"N_{label}" for label in ["up", "down", "tot", "single", "pair"]]
-local_obs += ["X_Cross", "S2"]
+local_obs += ["X_Cross", "S2_psi"]
 for obs in local_obs:
     h_terms[obs] = LocalTerm(
         ops[obs],
@@ -176,14 +210,8 @@ for ii in range(n_eigs):
     logger.info("====================================================")
     logger.info(f"{ii} ENERGY: {round(res['energy'][ii], 4)}")
     # GET STATE CONFIGURATIONS
-    H.Npsi[ii].get_state_configurations(threshold=1e-1, sector_indices=sector_ind)
-    """
-    # COMPUTE THE REDUCED DENSITY MATRIX
-    if not has_obc:
-        rho = H.Npsi[ii].reduced_density_matrix(0)
-        eigvals, _ = diagonalize_density_matrix(rho)
-        logger.info(eigvals)
-    """
+    H.Npsi[ii].get_state_configurations(threshold=1e-1, sector_configs=sector_configs)
+    H.Npsi[ii].entanglement_entropy([0, 3], sector_configs=sector_configs)
     # ===========================================================================
     # LOCAL OBSERVABLES:
     # ===========================================================================
@@ -202,7 +230,6 @@ for ii in range(n_eigs):
         logger.info(f"{obs1}_{obs2}")
         logger.info("----------------------------------------------------")
         h_terms[f"{obs1}_{obs2}"].get_expval(H.Npsi[ii])
-        print(h_terms[f"{obs1}_{obs2}"].corr)
     # ===========================================================================
     # PLAQUETTE OBSERVABLES:
     # ===========================================================================

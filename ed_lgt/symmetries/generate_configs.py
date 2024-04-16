@@ -35,17 +35,15 @@ def config_to_index(config, loc_dims):
     The latter ones can display local Hilbert space with different dimension.
     The order of the sites must match the order of the dimensionality of the local basis
     Args:
-        loc_states (list of ints): list of numbered state of the lattice sites
-
-        loc_dims (list of ints, np.ndarray of ints, or int): list of lattice site dimensions
-            (in the same order as they are stored in the loc_states!)
+        config (np.ndarray): Array of numbered states of the lattice sites.
+        loc_dims (np.ndarray): Array of dimensions for each lattice site.
 
     Returns:
-        int: QMB index
+        int: QMB index corresponding to the given configuration.
     """
     qmb_index = 0
     multiplier = 1
-    for site_index in reversed(range(len(config))):
+    for site_index in range(len(config) - 1, -1, -1):
         qmb_index += config[site_index] * multiplier
         multiplier *= loc_dims[site_index]
     return qmb_index

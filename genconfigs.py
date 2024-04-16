@@ -68,6 +68,29 @@ params = {"g": np.logspace(-2, -1, 10)}
 gen_configs("template", params, f"QED/DM_scaling_PBC")
 
 # %%
+# QED spin CONVERGENCE
+params = {
+    "spin": np.arange(1, 31, 1),
+    "g": np.logspace(np.log10(np.sqrt(0.1)), np.log10(np.sqrt(10)), num=10),
+    "m": np.logspace(-2, 1, 10),
+}
+gen_configs("template", params, f"QED/convergence2")
+
+# %%
+# SU2 scars
+params = {
+    "g": np.logspace(-1, 1, 15),
+    "m": np.logspace(-1, 1, 15),
+}
+gen_configs("template", params, f"SU2/scars")
+# %%
+# SU2 scars
+params = {
+    "g": [0.1, 1, 5],
+    "m": [0.1, 1, 5],
+}
+gen_configs("template", params, f"SU2/prova")
+# %%
 # QED ENTANGLEMENT vs spin REP
 params = {"spin": np.arange(1, 6, 1), "g": np.logspace(-2, 0, 15)}
 gen_configs("template", params, f"QED/entanglement")

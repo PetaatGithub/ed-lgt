@@ -78,9 +78,453 @@ plt.legend()
 
 fig1, ax1 = plt.subplots()
 for kk, U in enumerate(vals["U"]):
-    ax1.plot(np.arange(4), entropies[kk][:4], "-o", label=f"U={U}")
+    ax1.plot(np.arange(1, 5, 1), entropies[kk][:4], "-o", label=f"U={U}")
 ax1.set(xlabel="A", ylabel="EE")
 plt.legend()
+
+
+# %%
+def r_values(energy):
+    energy = np.sort(energy)
+    delta_E = np.zeros(energy.shape[0] - 1)
+    r_array = np.zeros(energy.shape[0] - 1)
+    for ii in range(energy.shape[0] - 1):
+        delta_E[ii] = energy[ii + 1] - energy[ii]
+    for ii in range(delta_E.shape[0]):
+        if ii == 0:
+            r_array[ii] = 1
+        else:
+            r_array[ii] = min(delta_E[ii], delta_E[ii - 1]) / max(
+                delta_E[ii], delta_E[ii - 1]
+            )
+    return r_array, delta_E
+
+
+# %%
+config_filename = f"SU2/N8"
+match = SimsQuery(group_glob=config_filename)
+ugrid, vals = uids_grid(match.uids, ["g", "m"])
+# N=10 8951 1790:7160
+# N=8 1105 276:828
+# N=6 139  35:104
+N = 8
+if N == 10:
+    size = 8951
+elif N == 8:
+    size = 1105
+res = {
+    "entropy": np.zeros((vals["g"].shape[0], vals["m"].shape[0], size)),
+    "energy": np.zeros((vals["g"].shape[0], vals["m"].shape[0], size)),
+    "overlap_V": np.zeros((vals["g"].shape[0], vals["m"].shape[0], size)),
+    "overlap_PV": np.zeros((vals["g"].shape[0], vals["m"].shape[0], size)),
+    "overlap_M": np.zeros((vals["g"].shape[0], vals["m"].shape[0], size)),
+    # "delta_E": np.zeros((vals["g"].shape[0], vals["m"].shape[0], size-1)),
+    "r_values": np.zeros((vals["g"].shape[0], vals["m"].shape[0], size - 1)),
+}
+
+for kk, g in enumerate(vals["g"]):
+    for ii, m in enumerate(vals["m"]):
+        res["indices"] = get_sim(ugrid[kk][ii]).res["indices"]
+        res["entropy"][kk, ii, :] = get_sim(ugrid[kk][ii]).res["entropy"]
+        res["energy"][kk, ii, :] = get_sim(ugrid[kk][ii]).res["energy"]
+        res["overlap_V"][kk, ii, :] = get_sim(ugrid[kk][ii]).res["overlap_V"]
+        res["overlap_PV"][kk, ii, :] = get_sim(ugrid[kk][ii]).res["overlap_PV"]
+        res["overlap_M"][kk, ii, :] = get_sim(ugrid[kk][ii]).res["overlap_M"]
+        res["r_values"][kk, ii, :], _ = r_values(res["energy"][kk, ii, :])
+        print("===================================================")
+        # print(g, m, np.mean(res["r_values"][kk, ii, 276:828]))
+save_dictionary(res, f"N10m1g5.pkl")
+rval = np.array([0.36756723061786156, 0.36002678652893033, 0.4107746332363976])
+# %%
+config_filename = f"SU2/N10"
+match = SimsQuery(group_glob=config_filename)
+ugrid, vals = uids_grid(match.uids, ["g", "m"])
+res = {
+    "entropy": np.zeros((vals["g"].shape[0], vals["m"].shape[0], 8951)),
+    "energy": np.zeros((vals["g"].shape[0], vals["m"].shape[0], 8951)),
+    "r_values": np.zeros((vals["g"].shape[0], vals["m"].shape[0], 8950)),
+}
+
+
+means = np.zeros((vals["g"].shape[0], vals["m"].shape[0]))
+
+for kk, g in enumerate(vals["g"]):
+    for ii, m in enumerate(vals["m"]):
+        res["entropy"][kk, ii, :] = get_sim(ugrid[kk][ii]).res["entropy"]
+        res["energy"][kk, ii, :] = get_sim(ugrid[kk][ii]).res["energy"]
+        res["r_values"][kk, ii, :], _ = r_values(res["energy"][kk, ii, :])
+        means[kk, ii] = np.mean(res["r_values"][kk, ii, 1790:7160])
+        print("===================================================")
+        print(g, m, means[kk, ii])
+res["r_means"] = means
+save_dictionary(res, f"scars4.pkl")
+# %%
+fig, ax = plt.subplots()
+img = ax.imshow(
+    np.transpose(means),
+    origin="lower",
+    cmap="magma",
+    extent=[-1, 1, -1, 1],
+    vmin=0.3,  # Set the minimum value for color normalization
+    vmax=0.5,  # Set the maximum value for color normalization
+)
+ax.set_ylabel(r"$m$")
+ax.set_xlabel(r"$g$")
+ax.set(yticks=[-1, 0, 1], xticks=[-1, 0, 1])
+ax.xaxis.set_major_formatter(fake_log)
+ax.yaxis.set_major_formatter(fake_log)
+
+cb = fig.colorbar(
+    img,
+    ax=ax,
+    aspect=20,
+    location="right",
+    orientation="vertical",
+    pad=0.01,
+)
+
+fig, ax = plt.subplots()
+img = ax.imshow(
+    np.transpose(res["entropy"][:, :, 1]),
+    origin="lower",
+    cmap="magma",
+    extent=[-1, 1, -1, 1],
+)
+ax.set_ylabel(r"$m$")
+ax.set_xlabel(r"$g$")
+ax.set(yticks=[-1, 0, 1], xticks=[-1, 0, 1])
+ax.xaxis.set_major_formatter(fake_log)
+ax.yaxis.set_major_formatter(fake_log)
+
+cb = fig.colorbar(
+    img,
+    ax=ax,
+    aspect=20,
+    location="right",
+    orientation="vertical",
+    pad=0.01,
+)
+
+
+# %%
+import csv
+
+with open("energy_overlap_PV.csv", mode="w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow(["Energy", "Overlap Pol Vacuum"])  # Writing header row
+    for energy, overlap in zip(res["energy"][0, 0, :], res["overlap_PV"][0, 0, :]):
+        writer.writerow([energy, overlap])  # Writing data rows
+
+# %%
+import csv
+
+with open("energy_overlap_V.csv", mode="w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow(["Energy", "Overlap Vacuum"])  # Writing header row
+    for energy, overlap in zip(res["energy"][0, 0, :], res["overlap_V"][0, 0, :]):
+        writer.writerow([energy, overlap])  # Writing data rows
+
+# %%
+for kk, g in enumerate(vals["g"]):
+    for ii, m in enumerate(vals["m"]):
+        small_entropy_pos = res["entropy"][kk, ii, :] < 2
+        small_entropy = res["entropy"][kk, ii, small_entropy_pos]
+        small_entropy_energy = res["energy"][kk, ii, small_entropy_pos]
+        small_entropy_overlap_V = res["overlap_V"][kk, ii, small_entropy_pos]
+        small_entropy_overlap_PV = res["overlap_PV"][kk, ii, small_entropy_pos]
+
+        fig, ax = plt.subplots()
+        ax.scatter(
+            res["energy"][kk, ii, :],
+            res["entropy"][kk, ii, :],
+            s=10,
+            facecolors="white",
+            edgecolors="black",
+            label=f"m={m}, g={g}",
+        )
+        """        
+        ax.scatter(
+            res["energy"][kk, ii, res["indices"]],
+            res["entropy"][kk, ii, res["indices"]],
+            s=15,
+            facecolors="red",
+            edgecolors="red",
+            label=f"m={m}, g={g}",
+        )"""
+        ax.set(xlabel="Energy", ylabel="Bipartite Ent. Entropy")
+        ax.legend()
+        ax.grid()
+        """        
+        fig, ax = plt.subplots()
+        ax.scatter(
+            np.arange(1104),
+            res["delta_E"][kk, ii, :],
+            s=10,
+            facecolors="white",
+            edgecolors="red",
+            label=f"m={m}, g={g}",
+        )
+        ax.set(xlabel="n", ylabel="delta E n", yscale="log")
+        ax.legend()
+        ax.grid()"""
+        # ==============================
+        fig, ax = plt.subplots()
+        ax.scatter(
+            res["energy"][kk, ii, :],
+            res["overlap_M"][kk, ii, :],
+            s=10,
+            facecolors="white",
+            edgecolors="blue",
+            label=f"m={m}, g={g}",
+        )
+        """ax.scatter(
+            res["energy"][kk, ii, res["indices"]],
+            res["overlap_PV"][kk, ii, res["indices"]],
+            s=15,
+            facecolors="red",
+            edgecolors="red",
+            label=f"m={m}, g={g}",
+        )"""
+        ax.set(
+            xlabel="Energy",
+            ylabel="Overlap Meson",
+            yscale="log",
+            # xlim=[-2.5, 7.5],
+            ylim=[1e-12, 1],
+        )
+        ax.legend()
+        ax.grid()
+        fig, ax = plt.subplots()
+        ax.scatter(
+            res["energy"][kk, ii, :],
+            res["overlap_V"][kk, ii, :],
+            s=10,
+            facecolors="white",
+            edgecolors="brown",
+            label=f"m={m}, g={g}",
+        )
+        ax.scatter(
+            res["energy"][kk, ii, res["indices"]],
+            res["overlap_V"][kk, ii, res["indices"]],
+            s=15,
+            facecolors="red",
+            edgecolors="red",
+            label=f"m={m}, g={g}",
+        )
+        ax.set(
+            xlabel="Energy",
+            ylabel="Overlap Vacuum",
+            yscale="log",
+            ylim=[1e-12, 1],
+            # xlim=[-17, 14],
+        )
+        ax.legend()
+        ax.grid()
+save_dictionary(res, "scars3.pkl")
+
+# %%
+for ii in range(res["energy"].shape[2]):
+    print(res["energy"][0, 0, ii], res["entropy"][0, 0, ii])
+# %%
+for kk, g in enumerate(vals["g"]):
+    for ii, m in enumerate(vals["m"]):
+        fig, ax = plt.subplots(3, 1, sharex=True)
+        ax[0].scatter(
+            small_entropy_energy,
+            small_entropy,
+            s=10,
+            facecolors="white",
+            edgecolors="black",
+            label=f"N=10, m={m}, g={g}",
+        )
+        ax[0].set(ylabel="Bip. Ent. Entropy", ylim=[0, 2.2])
+        ax[0].legend()
+        # ==============================
+        ax[1].scatter(
+            small_entropy_energy,
+            small_entropy_overlap_V,
+            s=10,
+            facecolors="white",
+            edgecolors="red",
+            label=f"m={m}, g={g}",
+        )
+        ax[1].set(
+            ylabel="Ov. Vacuum",
+            yscale="log",
+            ylim=[1e-12, 2],
+        )
+        # ==============================
+        ax[2].scatter(
+            small_entropy_energy,
+            small_entropy_overlap_PV,
+            s=10,
+            facecolors="white",
+            edgecolors="blue",
+            label=f"m={m}, g={g}",
+        )
+
+        ax[2].set(
+            xlabel="Energy", ylabel="Ov. Pol Vacuum", yscale="log", ylim=[1e-12, 2]
+        )
+        for jj, axis in enumerate(ax.flat):
+            axis.grid()
+# %%
+config_filename = f"SU2/dynamics"
+match = SimsQuery(group_glob=config_filename)
+ugrid, vals = uids_grid(match.uids, ["g", "m"])
+res = {
+    "entropy": get_sim(ugrid[0][0]).res["entropy"],
+    "fidelity": get_sim(ugrid[0][0]).res["fidelity"],
+}
+
+fig, ax = plt.subplots()
+start = 0
+stop = 3
+delta_n = 0.01
+n_steps = int((stop - start) / delta_n)
+ax.plot(np.arange(n_steps) * delta_n, res["entropy"])
+ax.set(xlabel="Time", ylabel="Entanglement entropy")
+ax.grid()
+
+fig, ax = plt.subplots()
+start = 0
+stop = 3
+delta_n = 0.01
+n_steps = int((stop - start) / delta_n)
+ax.plot(np.arange(n_steps) * delta_n, res["fidelity"])
+ax.grid()
+ax.set(xlabel="Time", ylabel="Fidelity")
+# %%
+config_filename = f"QED/prova"
+match = SimsQuery(group_glob=config_filename)
+ugrid, vals = uids_grid(match.uids, ["g"])
+lvals = get_sim(ugrid[0]).par["model"]["lvals"]
+entropies = []
+a = []
+for kk, g in enumerate(vals["g"]):
+    entropies.append(float(get_sim(ugrid[kk]).res["entropy"]))
+    a.append(float(get_sim(ugrid[kk]).res["C_px,py_C_py,mx_C_my,px_C_mx,my"]))
+# %%
+config_filename = f"QED/convergence"
+match = SimsQuery(group_glob=config_filename)
+ugrid, vals = uids_grid(match.uids, ["g", "m", "spin"])
+
+res = {
+    "entropy": np.zeros(
+        (vals["g"].shape[0], vals["m"].shape[0], vals["spin"].shape[0])
+    ),
+    "plaq": np.zeros((vals["g"].shape[0], vals["m"].shape[0], vals["spin"].shape[0])),
+}
+
+for ii, g in enumerate(vals["g"]):
+    for jj, m in enumerate(vals["m"]):
+        for kk, spin in enumerate(vals["spin"]):
+            res["entropy"][ii, jj, kk] = get_sim(ugrid[ii][jj][kk]).res["entropy"]
+            res["plaq"][ii, jj, kk] = get_sim(ugrid[ii][jj][kk]).res[
+                "C_px,py_C_py,mx_C_my,px_C_mx,my"
+            ]
+# %%
+abs_convergence = 1e-3
+rel_convergence = 1e-1
+convergence = np.zeros((vals["g"].shape[0], vals["m"].shape[0]))
+entropy = np.zeros((vals["g"].shape[0], vals["m"].shape[0]))
+plaq = np.zeros((vals["g"].shape[0], vals["m"].shape[0]))
+for ii, g in enumerate(vals["g"]):
+    for jj, m in enumerate(vals["m"]):
+        for kk, spin in enumerate(vals["spin"]):
+            if kk > 0:
+                abs_delta = np.abs(
+                    res["plaq"][ii, jj, kk] - res["plaq"][ii, jj, kk - 1]
+                )
+                rel_delta = abs_delta / np.abs(res["plaq"][ii, jj, kk])
+                if abs_delta < abs_convergence and rel_delta < rel_convergence:
+                    print(g, m, spin)
+                    convergence[ii, jj] = spin
+                    entropy[ii, jj] = res["entropy"][ii, jj, kk]
+                    plaq[ii, jj] = res["plaq"][ii, jj, kk]
+                    break
+print("===========================")
+for ii, g in enumerate(vals["g"]):
+    for jj, m in enumerate(vals["m"]):
+        if convergence[ii, jj] == 0:
+            print(g, m)
+            convergence[ii, jj] = 30
+            entropy[ii, jj] = res["entropy"][ii, jj, -1]
+            plaq[ii, jj] = res["plaq"][ii, jj, -1]
+# %%
+fig, ax = plt.subplots()
+ax.plot(1 / vals["g"], convergence[:,], "-o")
+ax.set(xscale="log", yscale="log")
+ax.plot(1 / vals["g"], np.sqrt(2) / vals["g"])
+# %%
+fig, ax = plt.subplots()
+img = ax.imshow(
+    np.transpose(convergence),
+    origin="lower",
+    cmap="magma",
+    extent=[-2, 1, -2, 1],
+)
+ax.set_ylabel(r"$m$")
+ax.set_xlabel(r"$g$")
+ax.set(yticks=[-2, -1, 0, 1], xticks=[-2, -1, 0, 1])
+ax.xaxis.set_major_formatter(fake_log)
+ax.yaxis.set_major_formatter(fake_log)
+
+cb = fig.colorbar(
+    img,
+    ax=ax,
+    aspect=20,
+    location="right",
+    orientation="vertical",
+    pad=0.01,
+)
+
+fig, ax = plt.subplots()
+img = ax.imshow(
+    np.transpose(entropy),
+    origin="lower",
+    cmap="magma",
+    extent=[-2, 1, -2, 1],
+)
+ax.set_ylabel(r"$m$")
+ax.set_xlabel(r"$g$")
+ax.set(yticks=[-2, -1, 0, 1], xticks=[-2, -1, 0, 1])
+ax.xaxis.set_major_formatter(fake_log)
+ax.yaxis.set_major_formatter(fake_log)
+
+cb = fig.colorbar(
+    img,
+    ax=ax,
+    aspect=20,
+    location="right",
+    orientation="vertical",
+    pad=0.01,
+)
+
+
+fig, ax = plt.subplots()
+img = ax.imshow(
+    np.transpose(plaq),
+    origin="lower",
+    cmap="magma",
+    extent=[-2, 1, -2, 1],
+)
+ax.set_ylabel(r"$m$")
+ax.set_xlabel(r"$g$")
+ax.set(yticks=[-2, -1, 0, 1], xticks=[-2, -1, 0, 1])
+ax.xaxis.set_major_formatter(fake_log)
+ax.yaxis.set_major_formatter(fake_log)
+
+cb = fig.colorbar(
+    img,
+    ax=ax,
+    aspect=20,
+    location="right",
+    orientation="vertical",
+    pad=0.01,
+)
+
+save_dictionary(res, f"QED_conv.pkl")
 # %%
 config_filename = "Z2_FermiHubbard/U_potential"
 match = SimsQuery(group_glob=config_filename)

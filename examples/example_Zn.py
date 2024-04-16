@@ -6,19 +6,14 @@ from copy import deepcopy
 from ed_lgt.operators import (
     Zn_rishon_operators,
     Zn_gauge_invariant_ops,
-    Zn_corner_magnetic_basis,
     Zn_dressed_site_operators,
     Zn_gauge_invariant_states,
     QED_Hamiltonian_couplings,
-    get_lambda_subspace,
 )
-from ed_lgt.modeling import Ground_State, LocalTerm, TwoBodyTerm, PlaquetteTerm
+from ed_lgt.modeling import QMB_state, LocalTerm, TwoBodyTerm, PlaquetteTerm
 from ed_lgt.modeling import (
-    entanglement_entropy,
-    get_reduced_density_matrix,
     diagonalize_density_matrix,
     staggered_mask,
-    get_state_configurations,
     truncation,
     lattice_base_configs,
 )
@@ -30,7 +25,11 @@ from ed_lgt.tools import (
     anti_commutator as anti_comm,
     check_commutator as check_comm,
 )
+from scipy.sparse import kron
 
+ops = Zn_rishon_operators(4, False)
+
+# %%
 # N eigenvalues
 n_eigs = 1
 # LATTICE DIMENSIONS

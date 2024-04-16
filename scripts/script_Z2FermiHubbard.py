@@ -8,10 +8,10 @@ with run_sim() as sim:
     global_ops = [model.ops[op] for op in sim.par["symmetries"]["sym_ops"]]
     global_sectors = sim.par["symmetries"]["sym_sectors"]
     link_ops = [
-        [model.ops["P_px"], model.ops["P_mx"]],
-        [model.ops["P_py"], model.ops["P_my"]],
+        [model.ops["n_px"], model.ops["n_mx"]],
+        [model.ops["n_py"], model.ops["n_my"]],
     ]
-    link_sectors = [1, 1]
+    link_sectors = [0, 0]
     model.get_abelian_symmetry_sector(
         global_ops=global_ops,
         global_sectors=global_sectors,
@@ -25,19 +25,14 @@ with run_sim() as sim:
     coeffs = {"U": sim.par["U"], "t": sim.par["t"]}
     model.build_Hamiltonian(coeffs)
     model.diagonalize_Hamiltonian(n_eigs=sim.par["hamiltonian"]["n_eigs"])
+    # ---------------------------------------------------------------------
     # LIST OF LOCAL OBSERVABLES
-    # local_obs = [f"n_{s}{d}" for d in model.directions for s in "mp"]
+    local_obs = [f"n_{s}{d}" for d in model.directions for s in "mp"]
     local_obs = [f"N_{label}" for label in ["up", "down", "tot", "single", "pair"]]
-    local_obs += ["X_Cross", "S2"]
+    local_obs += ["X_Cross", "S2_psi"]
     # LIST OF TWOBODY CORRELATORS
-    twobody_obs = [["Sz", "Sz"]]
-    """[
-        ["Sz_px,mx", "Sz_px,mx"],
-        ["Sz_py,my", "Sz_py,my"],
-        ["Sx_px,mx", "Sx_px,mx"],
-        ["Sx_py,my", "Sx_py,my"],
-    ]"""
-    twobody_axes = None  # []  # ["x", "y", "x", "y"]
+    twobody_obs = [["Sz_psi", "Sz_psi"]]
+    twobody_axes = None
     # LIST OF PLAQUETTE OPERATORS
     plaquette_obs = [["C_px,py", "C_py,mx", "C_my,px", "C_mx,my"]]
     # DEFINE OBSERVABLES
@@ -45,16 +40,24 @@ with run_sim() as sim:
         local_obs, twobody_obs, plaquette_obs, twobody_axes=twobody_axes
     )
     # MEASUREMENTS
-    sim.res["obs"] = {}
+    sim.res["entropy"] = []
+    entropy_sets = [[0], [0, 1], [0, 1, 2]]  # , [0, 1, 2, 3], [0, 4], [0, 1, 4, 5]]
     for ii in range(model.n_eigs):
         # PRINT ENERGY
         model.H.print_energy(ii)
-        model.H.Npsi[ii].get_state_configurations(sector_indices=model.sector_indices)
+        # ENTROPIES
+        for eset in entropy_sets:
+            entropy = model.H.Npsi[ii].entanglement_entropy(
+                eset, sector_configs=model.sector_configs
+            )
+            sim.res["entropy"].append(entropy)
+        # STATE CONFIGURATIONS
+        model.H.Npsi[ii].get_state_configurations(sector_configs=model.sector_configs)
         # MEASURE OBSERVABLES
         model.measure_observables(ii)
-        sim.res["Sz_Sz"] = analyze_correlator(model.res["Sz_Sz"])
+        sim.res["C"] = analyze_correlator(model.res["Sz_Sz"])
         # CHECK LINK SYMMETRIES
-        # model.check_symmetries()
+        model.check_symmetries()
         if ii == 0:
             # SAVE RESULTS
             for measure in model.res.keys():
